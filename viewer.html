@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎥 Stream Viewer</title>
+  <style>
+    body { background:#0d1117; color:#fff; font-family:sans-serif; text-align:center; }
+    video { width:90%; max-width:500px; border-radius:12px; margin-top:10px; background:black; }
+    input, button { padding:10px; margin:10px; border-radius:8px; border:none; font-size:16px; }
+    button { background:#007bff; color:white; cursor:pointer; }
+    button:hover { background:#0056b3; }
+  </style>
+</head>
+<body>
+  <h2>🎥 Stream Viewer</h2>
+  <p>Enter the same room name as the sender:</p>
+  <input id="roomInput" placeholder="room123" />
+  <button id="joinBtn">Join Stream</button>
+  <video id="remoteVideo" autoplay playsinline></video>
+
+  <script>
+    const wsUrl = "wss://wss-signaling.herokuapp.com"; // free signaling server
+    let pc, ws, room;
+
+    document.getElementById("joinBtn").onclick = () => {
+      room = document.getElementById("roomInput").value.trim();
+      if (!room) return alert("Enter a room name!");
+
+      ws = new WebSocket(wsUrl);
+      pc = new RTCPeerConnection();
+
+      pc.ontrack = e => {
+        document.getElementById("remoteVideo").srcObject = e.streams[0];
+      };
+      pc.onicecandidate = e => {
+        if (e.candidate) ws.send(JSON.stringify({ room, type: "candidate", candidate: e.candidate }));
+      };
+
+      ws.onmessage = async e => {
+        const msg = JSON.parse(e.data);
+        if (msg.room !== room) return;
+        if (msg.type === "offer") {
+          await pc.setRemoteDescription(msg.offer);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ room, type: "answer", answer }));
+        }
+        if (msg.type === "candidate") await pc.addIceCandidate(msg.candidate);
+      };
+
+      ws.onopen = () => ws.send(JSON.stringify({ room, type: "viewer" }));
+    };
+  </script>
+</body>
+</html>
